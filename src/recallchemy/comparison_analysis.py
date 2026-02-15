@@ -215,6 +215,7 @@ def _compare_final_metrics(
     random_metrics: dict[str, float],
     target_recall: float | None = None,
     recall_tolerance: float = 1e-3,
+    p95_tolerance_ms: float = 0.1,
 ) -> str:
     opt_recall = float(optuna_metrics["recall"])
     rnd_recall = float(random_metrics["recall"])
@@ -226,6 +227,8 @@ def _compare_final_metrics(
         opt_ok = opt_recall >= float(target_recall)
         rnd_ok = rnd_recall >= float(target_recall)
         if opt_ok and rnd_ok:
+            if abs(opt_p95 - rnd_p95) <= p95_tolerance_ms:
+                return "tie"
             if opt_p95 + 1e-12 < rnd_p95:
                 return "win"
             if rnd_p95 + 1e-12 < opt_p95:
@@ -240,6 +243,8 @@ def _compare_final_metrics(
         return "win"
     if rnd_recall > opt_recall + recall_tolerance:
         return "loss"
+    if abs(opt_p95 - rnd_p95) <= p95_tolerance_ms:
+        return "tie"
     if opt_p95 + 1e-12 < rnd_p95:
         return "win"
     if rnd_p95 + 1e-12 < opt_p95:

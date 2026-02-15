@@ -5,10 +5,14 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from .optimizer import BackendRecommendation
+from .optimizer import BackendRecommendation, recommendation_order_key
 
 
-def _recommendation_rows(recommendations: list[BackendRecommendation]) -> list[dict[str, Any]]:
+def _recommendation_rows(
+    recommendations: list[BackendRecommendation],
+    *,
+    target_recall: float | None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for rec in recommendations:
         metrics = rec.metrics
@@ -24,7 +28,17 @@ def _recommendation_rows(recommendations: list[BackendRecommendation]) -> list[d
                 "rationale": rec.rationale,
             }
         )
-    rows.sort(key=lambda row: (-row["recall"], row["p95_query_ms"], row["build_time_s"]))
+    if target_recall is None:
+        rows.sort(key=lambda row: (-row["recall"], row["p95_query_ms"], row["build_time_s"]))
+    else:
+        rows.sort(
+            key=lambda row: recommendation_order_key(
+                recall=float(row["recall"]),
+                p95_query_ms=float(row["p95_query_ms"]),
+                build_time_s=float(row["build_time_s"]),
+                target_recall=float(target_recall),
+            )
+        )
     return rows
 
 
@@ -405,7 +419,12 @@ def write_comparison_reports(
     metadata: dict[str, Any],
     comparison_analysis: dict[str, Any] | None = None,
 ) -> tuple[Path, Path]:
-    rows = _recommendation_rows(recommendations)
+    target_recall = metadata.get("target_recall")
+    if not _is_finite_number(target_recall):
+        target_recall = None
+    else:
+        target_recall = float(target_recall)
+    rows = _recommendation_rows(recommendations, target_recall=target_recall)
     pareto_indices = _pareto_front_indices(rows)
 
     md_path = output_json_path.with_suffix(".comparison.md")

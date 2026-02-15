@@ -131,3 +131,13 @@ def test_compare_final_metrics_uses_latency_when_both_meet_target():
         target_recall=0.99,
     )
     assert result == "win"
+
+
+def test_compare_final_metrics_ties_when_latency_gap_is_small():
+    result = _compare_final_metrics(
+        optuna_metrics={"recall": 0.995, "p95_query_ms": 1.05},
+        random_metrics={"recall": 0.995, "p95_query_ms": 1.11},
+        target_recall=0.99,
+        p95_tolerance_ms=0.1,
+    )
+    assert result == "tie"

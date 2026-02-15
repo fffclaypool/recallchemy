@@ -79,12 +79,32 @@ def test_write_comparison_reports(tmp_path: Path):
     html = html_path.read_text(encoding="utf-8")
     assert "## comparison table" in md
     assert "| hnswlib | 0.9800 | 0.8700 | 0.8100 | 0.2000 |" in md
+    # With target_recall=0.95 all candidates qualify, so lower p95 should appear first.
+    assert md.index("| annoy | 0.9600 |") < md.index("| hnswlib | 0.9800 |")
     assert "## target recall qualified (ranked by p95)" in md
     assert "- annoy: recall=0.9600, p95=0.1000ms" in md
     assert "- hnswlib: recall=0.9800, p95=0.2000ms" in md
     assert "pareto scatter" in html
     assert "ndcg_at_k" in html
     assert "faiss-ivf" in html
+
+
+def test_write_comparison_reports_falls_back_to_recall_when_target_unmet(tmp_path: Path):
+    output_json = tmp_path / "recommendations.json"
+    output_json.write_text("{}", encoding="utf-8")
+
+    md_path, _ = write_comparison_reports(
+        output_json_path=output_json,
+        recommendations=_recs(),
+        metadata={
+            "generated_at": "2026-02-14T00:00:00+00:00",
+            "dataset_path": "/tmp/data.npz",
+            "metric": "angular",
+            "target_recall": 0.999,
+        },
+    )
+    md = md_path.read_text(encoding="utf-8")
+    assert md.index("| hnswlib | 0.9800 |") < md.index("| annoy | 0.9600 |")
 
 
 def test_write_comparison_reports_with_analysis_sections(tmp_path: Path):

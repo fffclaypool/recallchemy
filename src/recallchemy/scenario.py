@@ -22,7 +22,7 @@ DEFAULT_RUNTIME: dict[str, Any] = {
     "stage1_ratio": 0.6,
     "output": "recommendations.json",
     "top_n_trials": 5,
-    "compare_seeds": 0,
+    "compare_seeds": 5,
     "compare_seed_start": None,
     "constraints": {},
     "backend_overrides": {},
