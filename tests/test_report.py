@@ -104,6 +104,17 @@ def test_write_comparison_reports_with_analysis_sections(tmp_path: Path):
                         "build_time_s": {"n": 2, "mean": 0.04, "std": 0.0, "ci_low": 0.04, "ci_high": 0.04},
                     },
                 },
+                "impact": {
+                    "recall_gain_vs_baseline": 0.05,
+                    "p95_reduction_vs_baseline_pct": 50.0,
+                    "p95_speedup_vs_baseline_x": 2.0,
+                    "p95_reduction_vs_random_pct": 28.6,
+                    "p95_speedup_vs_random_x": 1.4,
+                    "time_to_target": {
+                        "optuna": {"reach_rate": 1.0, "stats": {"mean": 4.0}},
+                        "random": {"reach_rate": 0.5, "stats": {"mean": 8.0}},
+                    },
+                },
                 "win_rate": {"wins": 2, "ties": 0, "losses": 0, "win_rate": 1.0},
                 "errors": [],
             }
@@ -123,6 +134,7 @@ def test_write_comparison_reports_with_analysis_sections(tmp_path: Path):
     )
     md = md_path.read_text(encoding="utf-8")
     assert "## 1. Anytime (best-so-far by trial)" in md
+    assert "## 2. Impact summary (baseline vs optimization)" in md
     assert "## 3. Distribution (final best across seeds)" in md
     assert "## 4. Win-rate (Optuna vs Random, same budget)" in md
     assert "| annoy | 2 | 0 | 0 | 100.0% |" in md

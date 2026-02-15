@@ -14,6 +14,7 @@ It uses candidate values inspired by `ann-benchmarks` as search-space priors.
 - Recommendation policy: lowest p95 latency among configs meeting `target_recall`
 - JSON output with recommendation and top trials
 - Auto-generated comparison reports (`.comparison.md` and `.comparison.html`) with backend table and Pareto view
+- Impact-oriented analysis: baseline-vs-optuna improvement summary and time-to-target trial counts
 
 ## Install
 
@@ -60,7 +61,7 @@ When `--output recommendations.json` is used, these files are also generated aut
 - `recommendations.comparison.html`
 
 To include robustness analysis in the markdown report
-(`1. Anytime`, `3. Distribution`, `4. Win-rate`), run with comparison seeds:
+(`1. Anytime`, `2. Impact summary`, `3. Distribution`, `4. Win-rate`), run with comparison seeds:
 
 ```bash
 recallchemy-tune \
@@ -112,9 +113,10 @@ git push
 Open Actions -> `Tune From LFS Dataset` -> `Run workflow`, then set:
 - `dataset_path`: repository-relative path (example: `datasets/glove-100-angular.hdf5`)
 - optional tuning params (`backends`, `trials`, `top_k`, `target_recall`, etc.)
+- optional `trial_budgets`: space-separated budgets (example: `10 30 80`) to run budget sweep in one job
 
 The workflow validates that the given file is LFS-tracked, pulls the LFS object,
-runs `recallchemy`, and uploads report artifacts.
+runs `recallchemy`, and uploads report artifacts (`artifacts/**`, including per-budget outputs).
 
 Scenario-driven run:
 
@@ -189,6 +191,28 @@ Override examples:
   - Optional: `test` / `queries` / `neighbors` / `ground_truth` / `distance`
 - `.npy`:
   - 2D array (auto split into train/query with `query_fraction`)
+
+## Hard dataset recipe (ambiguous / crowded neighbors)
+
+To create a harder angular dataset where nearest neighbors are more ambiguous:
+
+```bash
+python scripts/generate_ambiguous_dataset.py \
+  --output datasets/ambiguous-hard-angular.npz \
+  --train-size 120000 \
+  --query-size 8000 \
+  --dim 256 \
+  --latent-dim 48 \
+  --n-centers 512 \
+  --cluster-noise 0.22 \
+  --duplicate-fraction 0.10
+```
+
+Then run:
+
+```bash
+recallchemy-tune --scenario scenarios/ambiguous-hard.yaml
+```
 
 ## Search-space priors from ann-benchmarks
 

@@ -88,6 +88,37 @@ def _distribution_summary(metrics_rows: list[dict[str, float]]) -> dict[str, dic
     }
 
 
+def _mean_or_nan(values: list[float]) -> float:
+    if not values:
+        return float("nan")
+    return float(np.mean(np.asarray(values, dtype=np.float64)))
+
+
+def _trial_stats(values: list[int]) -> dict[str, float | int]:
+    if not values:
+        nan = float("nan")
+        return {"n": 0, "mean": nan, "median": nan, "p90": nan}
+    arr = np.asarray(values, dtype=np.float64)
+    return {
+        "n": int(arr.shape[0]),
+        "mean": float(np.mean(arr)),
+        "median": float(np.median(arr)),
+        "p90": float(np.percentile(arr, 90)),
+    }
+
+
+def _safe_pct_reduction(before: float, after: float) -> float:
+    if not np.isfinite(before) or not np.isfinite(after) or before <= 0.0:
+        return float("nan")
+    return float(((before - after) / before) * 100.0)
+
+
+def _safe_speedup(before: float, after: float) -> float:
+    if not np.isfinite(before) or not np.isfinite(after) or after <= 0.0:
+        return float("nan")
+    return float(before / after)
+
+
 def _best_so_far_sequence(
     *,
     trial_history: list[dict[str, Any]],
@@ -102,7 +133,7 @@ def _best_so_far_sequence(
         selected, _ = select_recommendation(rows[:i], target_recall=target_recall, constraints=constraints)
         sequence.append(
             {
-                "trial": float(i),
+                "trial": int(i),
                 "recall": float(selected["recall"]),
                 "p95_query_ms": float(selected["p95_query_ms"]),
             }
@@ -151,6 +182,23 @@ def _anytime_summary(
     return summary
 
 
+def _first_trial_reaching_target(
+    *,
+    trial_history: list[dict[str, Any]],
+    target_recall: float,
+    constraints: dict[str, float] | None,
+) -> int | None:
+    sequence = _best_so_far_sequence(
+        trial_history=trial_history,
+        target_recall=target_recall,
+        constraints=constraints,
+    )
+    for row in sequence:
+        if float(row["recall"]) >= target_recall:
+            return int(row["trial"])
+    return None
+
+
 def _compare_final_metrics(
     *,
     optuna_metrics: dict[str, float],
@@ -170,6 +218,92 @@ def _compare_final_metrics(
     if rnd_p95 + 1e-12 < opt_p95:
         return "loss"
     return "tie"
+
+
+def _impact_summary(
+    *,
+    baseline_metrics: dict[str, float] | None,
+    optuna_by_seed: dict[int, BackendRecommendation],
+    random_by_seed: dict[int, BackendRecommendation],
+    target_recall: float,
+    constraints: dict[str, float] | None,
+) -> dict[str, Any]:
+    opt_metrics = [rec.metrics for rec in optuna_by_seed.values()]
+    rnd_metrics = [rec.metrics for rec in random_by_seed.values()]
+
+    baseline_recall = float("nan")
+    baseline_p95 = float("nan")
+    if baseline_metrics:
+        baseline_recall = float(baseline_metrics.get("recall", float("nan")))
+        baseline_p95 = float(baseline_metrics.get("p95_query_ms", float("nan")))
+
+    opt_recall_mean = _mean_or_nan([float(m.get("recall", float("nan"))) for m in opt_metrics])
+    opt_p95_mean = _mean_or_nan([float(m.get("p95_query_ms", float("nan"))) for m in opt_metrics])
+    rnd_recall_mean = _mean_or_nan([float(m.get("recall", float("nan"))) for m in rnd_metrics])
+    rnd_p95_mean = _mean_or_nan([float(m.get("p95_query_ms", float("nan"))) for m in rnd_metrics])
+
+    opt_ttt = [
+        t
+        for t in (
+            _first_trial_reaching_target(
+                trial_history=rec.trial_history or [],
+                target_recall=target_recall,
+                constraints=constraints,
+            )
+            for rec in optuna_by_seed.values()
+        )
+        if t is not None
+    ]
+    rnd_ttt = [
+        t
+        for t in (
+            _first_trial_reaching_target(
+                trial_history=rec.trial_history or [],
+                target_recall=target_recall,
+                constraints=constraints,
+            )
+            for rec in random_by_seed.values()
+        )
+        if t is not None
+    ]
+
+    return {
+        "target_recall": float(target_recall),
+        "optuna_recall_mean": opt_recall_mean,
+        "random_recall_mean": rnd_recall_mean,
+        "baseline_recall": baseline_recall,
+        "optuna_p95_query_ms_mean": opt_p95_mean,
+        "random_p95_query_ms_mean": rnd_p95_mean,
+        "baseline_p95_query_ms": baseline_p95,
+        "recall_gain_vs_baseline": (
+            float(opt_recall_mean - baseline_recall)
+            if np.isfinite(opt_recall_mean) and np.isfinite(baseline_recall)
+            else float("nan")
+        ),
+        "recall_gain_vs_random": (
+            float(opt_recall_mean - rnd_recall_mean)
+            if np.isfinite(opt_recall_mean) and np.isfinite(rnd_recall_mean)
+            else float("nan")
+        ),
+        "p95_reduction_vs_baseline_pct": _safe_pct_reduction(baseline_p95, opt_p95_mean),
+        "p95_reduction_vs_random_pct": _safe_pct_reduction(rnd_p95_mean, opt_p95_mean),
+        "p95_speedup_vs_baseline_x": _safe_speedup(baseline_p95, opt_p95_mean),
+        "p95_speedup_vs_random_x": _safe_speedup(rnd_p95_mean, opt_p95_mean),
+        "time_to_target": {
+            "optuna": {
+                "reach_rate": (
+                    float(len(opt_ttt) / len(optuna_by_seed)) if optuna_by_seed else float("nan")
+                ),
+                "stats": _trial_stats(opt_ttt),
+            },
+            "random": {
+                "reach_rate": (
+                    float(len(rnd_ttt) / len(random_by_seed)) if random_by_seed else float("nan")
+                ),
+                "stats": _trial_stats(rnd_ttt),
+            },
+        },
+    }
 
 
 def build_comparison_analysis(
@@ -206,6 +340,7 @@ def build_comparison_analysis(
             "baseline": None,
             "distribution": {},
             "anytime": [],
+            "impact": {},
             "win_rate": {"wins": 0, "ties": 0, "losses": 0, "win_rate": 0.0, "n_pairs": 0},
             "errors": [],
         }
@@ -305,6 +440,13 @@ def build_comparison_analysis(
         backend_data["anytime"] = _anytime_summary(
             optuna_histories=opt_histories,
             random_histories=rnd_histories,
+            target_recall=target_recall,
+            constraints=constraints,
+        )
+        backend_data["impact"] = _impact_summary(
+            baseline_metrics=(baseline["metrics"] if baseline else None),
+            optuna_by_seed=optuna_by_seed,
+            random_by_seed=random_by_seed,
             target_recall=target_recall,
             constraints=constraints,
         )
