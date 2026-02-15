@@ -1,0 +1,163 @@
+name: Tune From LFS Dataset
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_path:
+        description: "Repository-relative dataset path (Git LFS tracked), e.g. datasets/glove-100-angular.hdf5"
+        required: true
+        type: string
+      metric:
+        description: "Optional metric override (euclidean/angular/dot/cosine/l2/ip/inner_product)"
+        required: false
+        default: ""
+        type: string
+      backends:
+        description: "Space-separated backends: all / hnswlib annoy faiss-ivf"
+        required: false
+        default: "all"
+        type: string
+      trials:
+        description: "Optuna trials per backend"
+        required: false
+        default: "20"
+        type: string
+      top_k:
+        description: "top-k for evaluation"
+        required: false
+        default: "10"
+        type: string
+      target_recall:
+        description: "Recommendation threshold"
+        required: false
+        default: "0.95"
+        type: string
+      max_queries:
+        description: "Cap query count to reduce runtime"
+        required: false
+        default: "500"
+        type: string
+      compare_seeds:
+        description: "0 disables analysis; >0 enables multi-seed comparison"
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  tune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DATASET_PATH: ${{ github.event.inputs.dataset_path }}
+      INPUT_METRIC: ${{ github.event.inputs.metric }}
+      INPUT_BACKENDS: ${{ github.event.inputs.backends }}
+      INPUT_TRIALS: ${{ github.event.inputs.trials }}
+      INPUT_TOP_K: ${{ github.event.inputs.top_k }}
+      INPUT_TARGET_RECALL: ${{ github.event.inputs.target_recall }}
+      INPUT_MAX_QUERIES: ${{ github.event.inputs.max_queries }}
+      INPUT_COMPARE_SEEDS: ${{ github.event.inputs.compare_seeds }}
+      OUTPUT_DIR: artifacts
+      OUTPUT_JSON: artifacts/recommendations.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          lfs: false
+
+      - name: Validate dataset input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATASET_PATH}" ]]; then
+            echo "dataset_path is required" >&2
+            exit 1
+          fi
+          if [[ "${DATASET_PATH}" == /* ]]; then
+            echo "dataset_path must be repository-relative, not absolute" >&2
+            exit 1
+          fi
+          if [[ "${DATASET_PATH}" == *".."* ]]; then
+            echo "dataset_path must not include '..'" >&2
+            exit 1
+          fi
+          if [[ ! -f "${DATASET_PATH}" ]]; then
+            echo "dataset_path not found in repository: ${DATASET_PATH}" >&2
+            exit 1
+          fi
+          attr="$(git check-attr filter -- "${DATASET_PATH}" | awk '{print $3}')"
+          if [[ "${attr}" != "lfs" ]]; then
+            echo "dataset_path is not tracked by Git LFS: ${DATASET_PATH}" >&2
+            echo "Run: git lfs track \"datasets/**\" and recommit the dataset pointer file." >&2
+            exit 1
+          fi
+
+      - name: Fetch requested LFS object
+        shell: bash
+        run: |
+          set -euo pipefail
+          git lfs install --local
+          git lfs pull --include "${DATASET_PATH}" --exclude ""
+          ls -lh "${DATASET_PATH}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -e ".[backends]"
+
+      - name: Run tuning
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${OUTPUT_DIR}"
+          read -r -a backends_array <<< "${INPUT_BACKENDS}"
+          if [[ ${#backends_array[@]} -eq 0 ]]; then
+            backends_array=("all")
+          fi
+          metric_args=()
+          if [[ -n "${INPUT_METRIC}" ]]; then
+            metric_args=(--metric "${INPUT_METRIC}")
+          fi
+
+          python -m recallchemy \
+            --dataset "${DATASET_PATH}" \
+            "${metric_args[@]}" \
+            --backends "${backends_array[@]}" \
+            --trials "${INPUT_TRIALS}" \
+            --top-k "${INPUT_TOP_K}" \
+            --target-recall "${INPUT_TARGET_RECALL}" \
+            --max-queries "${INPUT_MAX_QUERIES}" \
+            --compare-seeds "${INPUT_COMPARE_SEEDS}" \
+            --output "${OUTPUT_JSON}"
+
+      - name: Summarize outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## recallchemy report"
+            echo ""
+            echo "- dataset_path: \`${DATASET_PATH}\`"
+            echo "- output_json: \`${OUTPUT_JSON}\`"
+            echo "- output_markdown: \`${OUTPUT_JSON%.json}.comparison.md\`"
+            echo "- output_html: \`${OUTPUT_JSON%.json}.comparison.html\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: recallchemy-report-${{ github.run_id }}
+          path: |
+            artifacts/recommendations.json
+            artifacts/recommendations.comparison.md
+            artifacts/recommendations.comparison.html

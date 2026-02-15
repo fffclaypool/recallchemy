@@ -81,6 +81,41 @@ python -m recallchemy \
   --backends all
 ```
 
+## GitHub Actions + Git LFS dataset
+
+This repository includes a manual workflow:
+- `.github/workflows/tune-from-lfs-dataset.yml`
+
+It accepts `workflow_dispatch` input `dataset_path` and generates:
+- `recommendations.json`
+- `recommendations.comparison.md`
+- `recommendations.comparison.html`
+
+as GitHub Actions artifacts.
+
+### 1. Track datasets with Git LFS
+
+The repository is configured to track `datasets/**` with Git LFS
+(`.gitattributes`).
+
+```bash
+git lfs install
+mkdir -p datasets
+cp /path/to/glove-100-angular.hdf5 datasets/
+git add .gitattributes datasets/glove-100-angular.hdf5
+git commit -m "chore: add dataset via git lfs"
+git push
+```
+
+### 2. Run from Actions UI
+
+Open Actions -> `Tune From LFS Dataset` -> `Run workflow`, then set:
+- `dataset_path`: repository-relative path (example: `datasets/glove-100-angular.hdf5`)
+- optional tuning params (`backends`, `trials`, `top_k`, `target_recall`, etc.)
+
+The workflow validates that the given file is LFS-tracked, pulls the LFS object,
+runs `recallchemy`, and uploads report artifacts.
+
 Scenario-driven run:
 
 ```bash
