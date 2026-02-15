@@ -1,21 +1,11 @@
-from __future__ import annotations
-
-"""Compatibility facade for tuning/optimization APIs.
-
-Internals are split under ``recallchemy.tuning`` for clearer responsibilities.
-This module re-exports the existing symbols to keep external imports stable.
-"""
-
-from .tuning import (
-    BackendRecommendation,
-    _build_sampler,
-    _compute_param_importance,
+from .importance import _compute_param_importance
+from .models import BackendRecommendation
+from .runner import optimize_backend
+from .sampler import _build_sampler, _split_trials, _tpe_startup_trials
+from .selection import (
     _meets_target_under_constraints,
     _passes_constraints,
-    _split_trials,
     _stage_has_target_hit,
-    _tpe_startup_trials,
-    optimize_backend,
     recommendation_order_key,
     select_recommendation,
 )

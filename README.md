@@ -35,6 +35,18 @@ splits backend internals by responsibility under `src/recallchemy/backends_impl/
   - FAISS IVF backend implementation
 - `src/recallchemy/backends_impl/registry.py`
   - Backend registry and `resolve_backends`
+- `src/recallchemy/optimizer.py`
+  - Compatibility facade for optimization imports
+- `src/recallchemy/tuning/models.py`
+  - Recommendation model (`BackendRecommendation`)
+- `src/recallchemy/tuning/selection.py`
+  - Recommendation / constraint decision logic
+- `src/recallchemy/tuning/sampler.py`
+  - Trial budget split and Optuna sampler configuration
+- `src/recallchemy/tuning/importance.py`
+  - Parameter-importance calculation helpers
+- `src/recallchemy/tuning/runner.py`
+  - Two-stage optimization orchestration (`optimize_backend`)
 
 ## Install
 
