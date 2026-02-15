@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from recallchemy.scenario import load_scenario
+from recallchemy.scenario import DEFAULT_RUNTIME, load_scenario
 
 
 def test_load_scenario_parses_sections(tmp_path: Path):
@@ -72,3 +72,7 @@ wandb:
     assert cfg["wandb"]["run_name"] == "smoke-run"
     assert cfg["wandb"]["tags"] == ["test", "smoke"]
     assert cfg["scenario_name"] == "smoke"
+
+
+def test_default_runtime_compare_seeds_is_robust():
+    assert int(DEFAULT_RUNTIME["compare_seeds"]) >= 5

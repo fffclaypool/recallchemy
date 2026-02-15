@@ -21,6 +21,19 @@ class BackendRecommendation:
     trial_history: list[dict[str, Any]] | None = None
 
 
+def recommendation_order_key(
+    *,
+    recall: float,
+    p95_query_ms: float,
+    build_time_s: float,
+    target_recall: float,
+) -> tuple[float, float, float, float]:
+    if recall >= target_recall:
+        # Unified decision rule: once target is met, lower p95 wins.
+        return (0.0, p95_query_ms, build_time_s, -recall)
+    return (1.0, -recall, p95_query_ms, build_time_s)
+
+
 def _trial_to_row(
     trial: optuna.trial.FrozenTrial,
     *,
@@ -126,6 +139,29 @@ def _passes_constraints(row: dict[str, Any], constraints: dict[str, float] | Non
     return True
 
 
+def _meets_target_under_constraints(
+    row: dict[str, Any],
+    *,
+    target_recall: float,
+    constraints: dict[str, float] | None,
+) -> bool:
+    if not _passes_constraints(row, constraints):
+        return False
+    return float(row["recall"]) >= float(target_recall)
+
+
+def _stage_has_target_hit(
+    rows: list[dict[str, Any]],
+    *,
+    target_recall: float,
+    constraints: dict[str, float] | None,
+) -> bool:
+    return any(
+        _meets_target_under_constraints(row, target_recall=target_recall, constraints=constraints)
+        for row in rows
+    )
+
+
 def select_recommendation(
     rows: list[dict[str, Any]],
     target_recall: float,
@@ -139,23 +175,28 @@ def select_recommendation(
     if not constrained_rows:
         constrained_rows = rows
 
-    satisfied = [row for row in constrained_rows if row["recall"] >= target_recall]
-    if satisfied:
-        best = min(satisfied, key=lambda x: (x["p95_query_ms"], x["build_time_s"], -x["recall"]))
+    best = min(
+        constrained_rows,
+        key=lambda row: recommendation_order_key(
+            recall=float(row["recall"]),
+            p95_query_ms=float(row["p95_query_ms"]),
+            build_time_s=float(row["build_time_s"]),
+            target_recall=float(target_recall),
+        ),
+    )
+    if float(best["recall"]) >= target_recall:
         rationale = f"Selected lowest p95 latency among trials with recall >= {target_recall:.3f}"
         if constraints_applied:
             if len(constrained_rows) < len(rows):
                 rationale += " while satisfying scenario constraints"
             else:
                 rationale += " (all trials satisfied constraints)"
-        return best, rationale
-
-    best = max(constrained_rows, key=lambda x: (x["recall"], -x["p95_query_ms"], -x["build_time_s"]))
-    rationale = f"No trial reached recall >= {target_recall:.3f}; selected the highest-recall trial"
-    if constraints_applied and len(constrained_rows) == len(rows):
-        rationale += " under constraints"
-    elif constraints_applied:
-        rationale += " under relaxed constraints (no trial satisfied all constraints)"
+    else:
+        rationale = f"No trial reached recall >= {target_recall:.3f}; selected the highest-recall trial"
+        if constraints_applied and len(constrained_rows) == len(rows):
+            rationale += " under constraints"
+        elif constraints_applied:
+            rationale += " under relaxed constraints (no trial satisfied all constraints)"
     return best, rationale
 
 
@@ -347,12 +388,19 @@ def optimize_backend(
     all_rows = list(stage1_rows)
 
     if stage2_trials > 0:
-        anchor, _ = select_recommendation(
-            stage1_rows,
-            target_recall=target_recall,
-            constraints=constraints,
-        )
-        anchor_params = anchor["params"]
+        stage2_mode = "local"
+        anchor_params: dict[str, Any] | None = None
+        if _stage_has_target_hit(stage1_rows, target_recall=target_recall, constraints=constraints):
+            anchor, _ = select_recommendation(
+                stage1_rows,
+                target_recall=target_recall,
+                constraints=constraints,
+            )
+            anchor_params = anchor["params"]
+        else:
+            # Local refinement can get trapped around low-recall anchors when stage-1
+            # never reaches the recall target. Continue global exploration instead.
+            stage2_mode = "global_fallback"
 
         stage2_sampler = _build_sampler(sampler, seed=seed + 1, n_trials=stage2_trials)
         stage2_study = optuna.create_study(
@@ -362,13 +410,22 @@ def optimize_backend(
         )
 
         def stage2_objective(trial: optuna.Trial) -> tuple[float, float, float]:
-            params = backend.suggest_local_params(
-                trial=trial,
-                n_train=dataset.train.shape[0],
-                dim=dataset.train.shape[1],
-                top_k=top_k,
-                anchor_params=anchor_params,
-            )
+            if stage2_mode == "local":
+                assert anchor_params is not None
+                params = backend.suggest_local_params(
+                    trial=trial,
+                    n_train=dataset.train.shape[0],
+                    dim=dataset.train.shape[1],
+                    top_k=top_k,
+                    anchor_params=anchor_params,
+                )
+            else:
+                params = backend.suggest_params(
+                    trial=trial,
+                    n_train=dataset.train.shape[0],
+                    dim=dataset.train.shape[1],
+                    top_k=top_k,
+                )
             try:
                 result = _evaluate_with_backend(
                     backend=backend,
@@ -381,7 +438,7 @@ def optimize_backend(
                 if tracking_sink is not None:
                     tracking_sink.log_trial(
                         backend=backend.name,
-                        stage="local",
+                        stage=stage2_mode,
                         trial=trial.number + stage1_trials,
                         state="pruned",
                         params=params,
@@ -392,7 +449,7 @@ def optimize_backend(
             if tracking_sink is not None:
                 tracking_sink.log_trial(
                     backend=backend.name,
-                    stage="local",
+                    stage=stage2_mode,
                     trial=trial.number + stage1_trials,
                     state="complete",
                     params=result.params,
@@ -412,7 +469,7 @@ def optimize_backend(
             show_progress_bar=False,
         )
         stage2_rows = [
-            _trial_to_row(t, stage="local", trial_offset=stage1_trials)
+            _trial_to_row(t, stage=stage2_mode, trial_offset=stage1_trials)
             for t in stage2_study.trials
             if t.state == optuna.trial.TrialState.COMPLETE and t.values is not None
         ]
@@ -421,7 +478,7 @@ def optimize_backend(
             for metric in ("recall", "p95_query_ms", "build_time_s"):
                 tracking_sink.log_param_importance(
                     backend=backend.name,
-                    stage="local",
+                    stage=stage2_mode,
                     metric=metric,
                     importances=_compute_param_importance(stage2_rows, metric_key=metric),
                 )

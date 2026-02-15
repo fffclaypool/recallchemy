@@ -65,3 +65,56 @@ def test_optimize_backend_runs_two_stage_and_returns_local_trials():
     assert 0 <= rec.params["x"] <= 100
     assert any(row.get("stage") == "local" for row in rec.top_trials)
 
+
+class DummyFallbackBackend(VectorBackend):
+    name = "dummy-fallback"
+    module_name = "math"
+
+    def suggest_params(self, trial: optuna.Trial, n_train: int, dim: int, top_k: int):
+        del n_train, dim, top_k
+        # Stage-1 must miss target so stage-2 switches to global fallback.
+        return {"x": int(trial.suggest_int("x_global", 0, 80))}
+
+    def suggest_local_params(self, trial: optuna.Trial, n_train: int, dim: int, top_k: int, anchor_params):
+        del n_train, dim, top_k, anchor_params
+        return {"x": int(trial.suggest_int("x_local", 0, 5))}
+
+    def build_index(self, train, metric, params):
+        del train, metric
+        return params["x"]
+
+    def query_index(self, index, query, top_k, metric, params):
+        del query, top_k, metric, params
+        return np.array([index], dtype=np.int64)
+
+    def evaluate(self, train, queries, ground_truth, metric, top_k, params):
+        del train, queries, ground_truth, metric, top_k
+        x = int(params["x"])
+        # Reach target only when x is high. A narrow local range around low anchors
+        # would fail; global fallback should recover by exploring wide range again.
+        recall = 0.6 if x < 90 else 1.0
+        p95 = float(max(0, 120 - x))
+        return EvaluationResult(
+            backend=self.name,
+            params=params,
+            recall=recall,
+            mean_query_ms=p95,
+            p95_query_ms=p95,
+            build_time_s=0.01,
+        )
+
+
+def test_optimize_backend_uses_global_fallback_when_stage1_misses_target():
+    rec = optimize_backend(
+        backend=DummyFallbackBackend(),
+        dataset=_dummy_dataset(),
+        top_k=1,
+        n_trials=6,
+        target_recall=0.95,
+        seed=1,
+        local_refine=True,
+        stage1_ratio=0.6,
+        record_history=True,
+    )
+    assert rec.trial_history is not None
+    assert any(row.get("stage") == "global_fallback" for row in rec.trial_history)

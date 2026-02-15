@@ -52,9 +52,9 @@ on:
         default: ""
         type: string
       compare_seeds:
-        description: "Optional compare_seeds override (empty uses scenario)"
+        description: "Optional compare_seeds override (default: 5)"
         required: false
-        default: ""
+        default: "5"
         type: string
 
 permissions:
@@ -212,7 +212,7 @@ jobs:
               "${compare_seeds_args[@]}" \
               --output "${output_json}"
 
-            python -c 'import json, math, sys; from pathlib import Path; payload=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")); trials=sys.argv[2]; rows=payload.get("recommendations", []); best=sorted(rows, key=lambda rec: (-float(rec.get("metrics", {}).get("recall", -math.inf)), float(rec.get("metrics", {}).get("p95_query_ms", math.inf))))[0] if rows else None; trial_label=trials or str(payload.get("metadata", {}).get("trials_per_backend", "-")); print(f"{trial_label}\t-\t-\t-" if best is None else f"{trial_label}\t{best.get(\"backend\", \"-\")}\t{float(best.get(\"metrics\", {}).get(\"recall\", float(\"nan\"))):.4f}\t{float(best.get(\"metrics\", {}).get(\"p95_query_ms\", float(\"nan\"))):.4f}")' "${output_json}" "${trial_budget}" >> "${OUTPUT_DIR}/budget_summary.tsv"
+            python -c 'import json, math, sys; from pathlib import Path; payload=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")); trials=sys.argv[2]; rows=payload.get("recommendations", []); target=float(payload.get("metadata", {}).get("target_recall", float("nan"))); rank=lambda rec: ((0.0, float(rec.get("metrics", {}).get("p95_query_ms", math.inf)), float(rec.get("metrics", {}).get("build_time_s", math.inf)), -float(rec.get("metrics", {}).get("recall", -math.inf))) if (math.isfinite(target) and float(rec.get("metrics", {}).get("recall", -math.inf)) >= target) else (1.0, -float(rec.get("metrics", {}).get("recall", -math.inf)), float(rec.get("metrics", {}).get("p95_query_ms", math.inf)), float(rec.get("metrics", {}).get("build_time_s", math.inf)))); best=min(rows, key=rank) if rows else None; trial_label=trials or str(payload.get("metadata", {}).get("trials_per_backend", "-")); print(f"{trial_label}\t-\t-\t-" if best is None else f"{trial_label}\t{best.get(\"backend\", \"-\")}\t{float(best.get(\"metrics\", {}).get(\"recall\", float(\"nan\"))):.4f}\t{float(best.get(\"metrics\", {}).get(\"p95_query_ms\", float(\"nan\"))):.4f}")' "${output_json}" "${trial_budget}" >> "${OUTPUT_DIR}/budget_summary.tsv"
           }
 
           budget_values=()
