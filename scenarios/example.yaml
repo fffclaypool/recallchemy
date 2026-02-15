@@ -1,0 +1,48 @@
+version: 1
+name: high-recall-annoy
+
+dataset:
+  path: /tmp/recallchemy_data/glove-25-angular.hdf5
+  metric: angular
+  max_train: 50000
+  max_queries: 1000
+  seed: 42
+
+evaluation:
+  top_k: 10
+  target_recall: 0.995
+  gt_batch_size: 64
+
+optimization:
+  trials: 20
+  timeout: 1800
+  local_refine: true
+  stage1_ratio: 0.6
+  seed: 42
+
+analysis:
+  compare_seeds: 0
+  seed_start: 42
+
+backends:
+  include: [annoy]
+
+constraints:
+  min_recall: 0.995
+  max_p95_ms: 30
+  max_build_time_s: 300
+
+backend_overrides:
+  annoy:
+    n_trees_range: [50, 1200]
+    search_k_range: [200, 200000]
+
+output:
+  path: /tmp/recallchemy_data/scenario_result.json
+  save_top_trials: 10
+
+wandb:
+  enabled: false
+  project: recallchemy
+  run_name: glove25-high-recall
+  tags: [annoy, high-recall]

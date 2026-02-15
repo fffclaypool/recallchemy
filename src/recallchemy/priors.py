@@ -1,0 +1,28 @@
+"""Search-space priors inspired by ann-benchmarks configs.
+
+Source (checked on 2026-02-14):
+- ann_benchmarks/algorithms/hnswlib/config.yml
+- ann_benchmarks/algorithms/annoy/config.yml
+- ann_benchmarks/algorithms/faiss/config.yml
+"""
+
+HNSWLIB_M = [4, 8, 12, 16, 24, 36, 48, 64, 96]
+HNSWLIB_EF_CONSTRUCTION = [100, 200, 500, 800]
+HNSWLIB_EF_SEARCH = [10, 20, 40, 80, 120, 200, 400, 600, 800]
+HNSWLIB_M_RANGE = (4, 128)
+HNSWLIB_EF_CONSTRUCTION_RANGE = (40, 4000)
+HNSWLIB_EF_SEARCH_RANGE = (10, 4000)
+
+ANNOY_N_TREES = [100, 200, 400, 800]
+ANNOY_SEARCH_K = [100, 200, 400, 1000, 2000, 4000, 10000, 20000, 40000, 100000, 200000, 400000]
+ANNOY_N_TREES_RANGE = (10, 4000)
+ANNOY_SEARCH_K_RANGE = (10, 4000000)
+
+FAISS_IVF_NLIST = [32, 64, 128, 256, 512, 1024, 2048, 4096, 8192]
+FAISS_IVF_NPROBE = [1, 5, 10, 50, 100, 200]
+FAISS_IVF_NLIST_RANGE = (16, 16384)
+FAISS_IVF_NPROBE_RANGE = (1, 2048)
+FAISS_PQ_NBITS = [4, 5, 6, 7, 8]
+FAISS_PQ_M = [4, 8, 12, 16, 24, 32, 48, 64, 96]
+FAISS_COARSE_HNSW_M = [8, 12, 16, 24, 32, 48]
+FAISS_RERANK_K_FACTOR = [1, 2, 4, 8, 16]

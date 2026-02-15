@@ -1,0 +1,37 @@
+{
+  "name": "VectorDB Auto-Tuner",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "version": "latest",
+      "enableNonRootDocker": "true",
+      "moby": "true"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "editor.formatOnSave": true,
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        }
+      },
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-docker",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ]
+    }
+  },
+  "postCreateCommand": "uv sync",
+  "remoteUser": "vscode",
+  "remoteEnv": {
+    "WANDB_API_KEY": "${localEnv:WANDB_API_KEY}"
+  }
+}

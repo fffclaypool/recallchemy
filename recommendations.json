@@ -1,0 +1,119 @@
+{
+  "metadata": {
+    "generated_at": "2026-02-14T14:45:18.326399+00:00",
+    "dataset_path": "/tmp/recallchemy_data/toy.npz",
+    "metric": "angular",
+    "train_size": 1200,
+    "query_size": 120,
+    "dimension": 32,
+    "top_k": 10,
+    "trials_per_backend": 40,
+    "target_recall": 0.95,
+    "local_refine": true,
+    "stage1_ratio": 0.6,
+    "constraints": {},
+    "backend_overrides": {},
+    "scenario_path": null,
+    "scenario_name": null,
+    "scenario_version": null,
+    "wandb": {
+      "enabled": true,
+      "project": "recallchemy-check",
+      "entity": null,
+      "run_name": null,
+      "group": null,
+      "job_type": null,
+      "tags": [],
+      "mode": "online"
+    },
+    "skipped_backends": {}
+  },
+  "recommendations": [
+    {
+      "backend": "annoy",
+      "rationale": "Selected lowest p95 latency among trials with recall >= 0.950",
+      "metrics": {
+        "recall": 0.95,
+        "mean_query_ms": 0.047302391370370366,
+        "p95_query_ms": 0.0703985475411173,
+        "build_time_s": 0.025831250997725874
+      },
+      "params": {
+        "space_profile": "local_refine",
+        "search_k_mode": "tree_scaled",
+        "n_trees": 37,
+        "search_k": 574
+      },
+      "top_trials": [
+        {
+          "trial": 22,
+          "stage": "global",
+          "recall": 1.0,
+          "p95_query_ms": 0.31808510429982556,
+          "build_time_s": 0.04723345900129061,
+          "mean_query_ms": 0.20706797543728803,
+          "params": {
+            "space_profile": "extended",
+            "search_k_mode": "tree_scaled",
+            "n_trees": 78,
+            "search_k": 2828
+          }
+        },
+        {
+          "trial": 10,
+          "stage": "global",
+          "recall": 1.0,
+          "p95_query_ms": 0.3783726035180734,
+          "build_time_s": 0.057798583002295345,
+          "mean_query_ms": 0.2746764246694511,
+          "params": {
+            "space_profile": "annbench",
+            "n_trees": 100,
+            "search_k": 4000
+          }
+        },
+        {
+          "trial": 1,
+          "stage": "global",
+          "recall": 1.0,
+          "p95_query_ms": 0.5555125022510764,
+          "build_time_s": 0.30607962599606253,
+          "mean_query_ms": 0.35698510861645144,
+          "params": {
+            "space_profile": "annbench",
+            "n_trees": 400,
+            "search_k": 2000
+          }
+        },
+        {
+          "trial": 5,
+          "stage": "global",
+          "recall": 1.0,
+          "p95_query_ms": 0.7200353982625525,
+          "build_time_s": 0.036324500004411675,
+          "mean_query_ms": 0.4001778338230603,
+          "params": {
+            "space_profile": "extended",
+            "search_k_mode": "tree_scaled",
+            "n_trees": 25,
+            "search_k": 5407
+          }
+        },
+        {
+          "trial": 4,
+          "stage": "global",
+          "recall": 1.0,
+          "p95_query_ms": 0.7629944026120936,
+          "build_time_s": 0.05093570800090674,
+          "mean_query_ms": 0.39884616623263963,
+          "params": {
+            "space_profile": "extended",
+            "search_k_mode": "tree_scaled",
+            "n_trees": 36,
+            "search_k": 5574
+          }
+        }
+      ]
+    }
+  ]
+}
