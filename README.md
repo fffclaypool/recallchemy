@@ -16,6 +16,26 @@ It uses candidate values inspired by `ann-benchmarks` as search-space priors.
 - Auto-generated comparison reports (`.comparison.md` and `.comparison.html`) with backend table and Pareto view
 - Impact-oriented analysis: baseline-vs-optuna improvement summary and time-to-target trial counts
 
+## Code Structure
+
+The project keeps `recallchemy.backends` as the stable public entrypoint, and
+splits backend internals by responsibility under `src/recallchemy/backends_impl/`.
+
+- `src/recallchemy/backends.py`
+  - Public API and compatibility layer (imports remain stable for callers/tests)
+- `src/recallchemy/backends_impl/base.py`
+  - `VectorBackend` abstract base + shared evaluate flow
+- `src/recallchemy/backends_impl/utils.py`
+  - Search-space and rerank helper utilities
+- `src/recallchemy/backends_impl/hnswlib.py`
+  - HNSW backend implementation
+- `src/recallchemy/backends_impl/annoy.py`
+  - Annoy backend implementation
+- `src/recallchemy/backends_impl/faiss_ivf.py`
+  - FAISS IVF backend implementation
+- `src/recallchemy/backends_impl/registry.py`
+  - Backend registry and `resolve_backends`
+
 ## Install
 
 ```bash
