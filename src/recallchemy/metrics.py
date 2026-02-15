@@ -98,3 +98,51 @@ def recall_at_k(predictions: NDArray[np.int64], ground_truth: NDArray[np.int64],
         hits += np.intersect1d(pred_row, truth_k[i], assume_unique=False).size
     return float(hits / (pred_k.shape[0] * k))
 
+
+def ndcg_at_k(predictions: NDArray[np.int64], ground_truth: NDArray[np.int64], k: int) -> float:
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if predictions.shape[0] != ground_truth.shape[0]:
+        raise ValueError("predictions and ground_truth must have equal number of rows")
+
+    pred_k = predictions[:, :k]
+    truth_k = ground_truth[:, :k]
+    ideal_dcg = float(np.sum(1.0 / np.log2(np.arange(2, k + 2, dtype=np.float64))))
+    if ideal_dcg <= 0.0:
+        return 0.0
+
+    total = 0.0
+    for i in range(pred_k.shape[0]):
+        truth_set = set(int(x) for x in truth_k[i] if int(x) >= 0)
+        dcg = 0.0
+        for rank, pred_id in enumerate(pred_k[i]):
+            pid = int(pred_id)
+            if pid < 0:
+                continue
+            if pid in truth_set:
+                dcg += 1.0 / np.log2(float(rank + 2))
+        total += dcg / ideal_dcg
+    return float(total / pred_k.shape[0])
+
+
+def mrr_at_k(predictions: NDArray[np.int64], ground_truth: NDArray[np.int64], k: int) -> float:
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if predictions.shape[0] != ground_truth.shape[0]:
+        raise ValueError("predictions and ground_truth must have equal number of rows")
+
+    pred_k = predictions[:, :k]
+    truth_k = ground_truth[:, :k]
+    total = 0.0
+    for i in range(pred_k.shape[0]):
+        truth_set = set(int(x) for x in truth_k[i] if int(x) >= 0)
+        rr = 0.0
+        for rank, pred_id in enumerate(pred_k[i]):
+            pid = int(pred_id)
+            if pid < 0:
+                continue
+            if pid in truth_set:
+                rr = 1.0 / float(rank + 1)
+                break
+        total += rr
+    return float(total / pred_k.shape[0])

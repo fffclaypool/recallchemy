@@ -120,6 +120,8 @@ def _print_summary(recommendations: list[BackendRecommendation]) -> None:
         metrics = rec.metrics
         print(
             f"- {rec.backend}: recall={metrics['recall']:.4f}, "
+            f"ndcg@k={metrics.get('ndcg_at_k', 0.0):.4f}, "
+            f"mrr@k={metrics.get('mrr_at_k', 0.0):.4f}, "
             f"p95={metrics['p95_query_ms']:.3f}ms, "
             f"build={metrics['build_time_s']:.3f}s, params={rec.params}"
         )

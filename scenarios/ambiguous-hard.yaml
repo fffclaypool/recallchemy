@@ -27,6 +27,12 @@ analysis:
 backends:
   include: [hnswlib, annoy, faiss-ivf]
 
+backend_overrides:
+  hnswlib:
+    M_range: [4, 48]
+    ef_construction_range: [40, 1200]
+    ef_search_range: [10, 1600]
+
 constraints:
   min_recall: 0.97
   max_p95_ms: 20

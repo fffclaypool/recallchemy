@@ -29,9 +29,11 @@ class TrackingSink:
         mean_query_ms: float | None = None,
         p95_query_ms: float | None = None,
         build_time_s: float | None = None,
+        ndcg_at_k: float | None = None,
+        mrr_at_k: float | None = None,
         error: str | None = None,
     ) -> None:
-        del backend, stage, trial, state, params, recall, mean_query_ms, p95_query_ms, build_time_s, error
+        del backend, stage, trial, state, params, recall, mean_query_ms, p95_query_ms, build_time_s, ndcg_at_k, mrr_at_k, error
 
     def log_recommendation(
         self,
@@ -123,6 +125,8 @@ class WandbTrackingSink(TrackingSink):
         mean_query_ms: float | None = None,
         p95_query_ms: float | None = None,
         build_time_s: float | None = None,
+        ndcg_at_k: float | None = None,
+        mrr_at_k: float | None = None,
         error: str | None = None,
     ) -> None:
         payload: dict[str, Any] = {
@@ -139,6 +143,10 @@ class WandbTrackingSink(TrackingSink):
             payload[f"{backend}/{stage}/p95_query_ms"] = p95_query_ms
         if build_time_s is not None:
             payload[f"{backend}/{stage}/build_time_s"] = build_time_s
+        if ndcg_at_k is not None:
+            payload[f"{backend}/{stage}/ndcg_at_k"] = ndcg_at_k
+        if mrr_at_k is not None:
+            payload[f"{backend}/{stage}/mrr_at_k"] = mrr_at_k
         if error:
             payload[f"{backend}/{stage}/error"] = error
         if params:
@@ -159,6 +167,8 @@ class WandbTrackingSink(TrackingSink):
             f"{backend}/recommended_mean_query_ms": metrics.get("mean_query_ms"),
             f"{backend}/recommended_p95_query_ms": metrics.get("p95_query_ms"),
             f"{backend}/recommended_build_time_s": metrics.get("build_time_s"),
+            f"{backend}/recommended_ndcg_at_k": metrics.get("ndcg_at_k"),
+            f"{backend}/recommended_mrr_at_k": metrics.get("mrr_at_k"),
         }
         payload.update(_flatten_dict(params, prefix=f"{backend}/recommended_params"))
         self._wandb.log(payload)

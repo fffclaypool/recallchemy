@@ -36,6 +36,8 @@ def _trial_to_row(
         "p95_query_ms": float(p95_ms),
         "build_time_s": float(build_time),
         "mean_query_ms": float(trial.user_attrs.get("mean_query_ms", 0.0)),
+        "ndcg_at_k": float(trial.user_attrs.get("ndcg_at_k", 0.0)),
+        "mrr_at_k": float(trial.user_attrs.get("mrr_at_k", 0.0)),
         "params": dict(trial.user_attrs.get("params", {})),
     }
 
@@ -45,6 +47,8 @@ def _set_trial_attrs(trial: optuna.Trial, result: EvaluationResult) -> None:
     trial.set_user_attr("mean_query_ms", result.mean_query_ms)
     trial.set_user_attr("p95_query_ms", result.p95_query_ms)
     trial.set_user_attr("build_time_s", result.build_time_s)
+    trial.set_user_attr("ndcg_at_k", result.ndcg_at_k)
+    trial.set_user_attr("mrr_at_k", result.mrr_at_k)
 
 
 def _evaluate_with_backend(
@@ -67,12 +71,32 @@ def _evaluate_with_backend(
 def _split_trials(n_trials: int, local_refine: bool, stage1_ratio: float) -> tuple[int, int]:
     if n_trials <= 0:
         return 0, 0
-    if not local_refine or n_trials < 4:
+    if not local_refine or n_trials < 6:
         return n_trials, 0
     ratio = min(0.9, max(0.5, stage1_ratio))
     stage1 = int(round(n_trials * ratio))
+    if n_trials <= 12:
+        # Keep most budget in stage-1 for small budgets so TPE can learn globally.
+        stage1 = max(stage1, n_trials - 2)
     stage1 = min(n_trials - 1, max(2, stage1))
     return stage1, n_trials - stage1
+
+
+def _tpe_startup_trials(n_trials: int) -> int:
+    if n_trials <= 2:
+        return 1
+    return max(2, min(10, int(np.ceil(n_trials * 0.25))))
+
+
+def _build_sampler(sampler: str, *, seed: int, n_trials: int) -> optuna.samplers.BaseSampler:
+    if sampler == "tpe":
+        return optuna.samplers.TPESampler(
+            seed=seed,
+            n_startup_trials=_tpe_startup_trials(n_trials),
+        )
+    if sampler == "random":
+        return optuna.samplers.RandomSampler(seed=seed)
+    raise ValueError(f"unsupported sampler={sampler!r}; expected 'tpe' or 'random'")
 
 
 def _passes_constraints(row: dict[str, Any], constraints: dict[str, float] | None) -> bool:
@@ -245,12 +269,7 @@ def optimize_backend(
         stage1_timeout = max(1, int(timeout * (stage1_trials / max(1, n_trials))))
         stage2_timeout = max(1, timeout - stage1_timeout) if stage2_trials > 0 else None
 
-    if sampler == "tpe":
-        stage1_sampler = optuna.samplers.TPESampler(seed=seed)
-    elif sampler == "random":
-        stage1_sampler = optuna.samplers.RandomSampler(seed=seed)
-    else:
-        raise ValueError(f"unsupported sampler={sampler!r}; expected 'tpe' or 'random'")
+    stage1_sampler = _build_sampler(sampler, seed=seed, n_trials=stage1_trials)
     stage1_study = optuna.create_study(
         directions=["maximize", "minimize", "minimize"],
         sampler=stage1_sampler,
@@ -296,6 +315,8 @@ def optimize_backend(
                 mean_query_ms=result.mean_query_ms,
                 p95_query_ms=result.p95_query_ms,
                 build_time_s=result.build_time_s,
+                ndcg_at_k=result.ndcg_at_k,
+                mrr_at_k=result.mrr_at_k,
             )
         return (result.recall, result.p95_query_ms, result.build_time_s)
 
@@ -333,10 +354,7 @@ def optimize_backend(
         )
         anchor_params = anchor["params"]
 
-        if sampler == "tpe":
-            stage2_sampler = optuna.samplers.TPESampler(seed=seed + 1)
-        else:
-            stage2_sampler = optuna.samplers.RandomSampler(seed=seed + 1)
+        stage2_sampler = _build_sampler(sampler, seed=seed + 1, n_trials=stage2_trials)
         stage2_study = optuna.create_study(
             directions=["maximize", "minimize", "minimize"],
             sampler=stage2_sampler,
@@ -382,6 +400,8 @@ def optimize_backend(
                     mean_query_ms=result.mean_query_ms,
                     p95_query_ms=result.p95_query_ms,
                     build_time_s=result.build_time_s,
+                    ndcg_at_k=result.ndcg_at_k,
+                    mrr_at_k=result.mrr_at_k,
                 )
             return (result.recall, result.p95_query_ms, result.build_time_s)
 
@@ -424,6 +444,8 @@ def optimize_backend(
             "mean_query_ms": float(selected["mean_query_ms"]),
             "p95_query_ms": float(selected["p95_query_ms"]),
             "build_time_s": float(selected["build_time_s"]),
+            "ndcg_at_k": float(selected.get("ndcg_at_k", 0.0)),
+            "mrr_at_k": float(selected.get("mrr_at_k", 0.0)),
         },
         params=selected["params"],
         top_trials=ranked[:top_n_trials],

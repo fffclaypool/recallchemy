@@ -83,6 +83,16 @@ def _metric_stats(
 def _distribution_summary(metrics_rows: list[dict[str, float]]) -> dict[str, dict[str, float | int]]:
     return {
         "recall": _metric_stats([row["recall"] for row in metrics_rows], min_value=0.0, max_value=1.0),
+        "ndcg_at_k": _metric_stats(
+            [float(row.get("ndcg_at_k", float("nan"))) for row in metrics_rows],
+            min_value=0.0,
+            max_value=1.0,
+        ),
+        "mrr_at_k": _metric_stats(
+            [float(row.get("mrr_at_k", float("nan"))) for row in metrics_rows],
+            min_value=0.0,
+            max_value=1.0,
+        ),
         "p95_query_ms": _metric_stats([row["p95_query_ms"] for row in metrics_rows], min_value=0.0),
         "build_time_s": _metric_stats([row["build_time_s"] for row in metrics_rows], min_value=0.0),
     }
@@ -203,16 +213,33 @@ def _compare_final_metrics(
     *,
     optuna_metrics: dict[str, float],
     random_metrics: dict[str, float],
+    target_recall: float | None = None,
     recall_tolerance: float = 1e-3,
 ) -> str:
     opt_recall = float(optuna_metrics["recall"])
     rnd_recall = float(random_metrics["recall"])
+    opt_p95 = float(optuna_metrics["p95_query_ms"])
+    rnd_p95 = float(random_metrics["p95_query_ms"])
+
+    # When both are acceptable on recall, decide by latency first.
+    if target_recall is not None:
+        opt_ok = opt_recall >= float(target_recall)
+        rnd_ok = rnd_recall >= float(target_recall)
+        if opt_ok and rnd_ok:
+            if opt_p95 + 1e-12 < rnd_p95:
+                return "win"
+            if rnd_p95 + 1e-12 < opt_p95:
+                return "loss"
+            return "tie"
+        if opt_ok and not rnd_ok:
+            return "win"
+        if rnd_ok and not opt_ok:
+            return "loss"
+
     if opt_recall > rnd_recall + recall_tolerance:
         return "win"
     if rnd_recall > opt_recall + recall_tolerance:
         return "loss"
-    opt_p95 = float(optuna_metrics["p95_query_ms"])
-    rnd_p95 = float(random_metrics["p95_query_ms"])
     if opt_p95 + 1e-12 < rnd_p95:
         return "win"
     if rnd_p95 + 1e-12 < opt_p95:
@@ -363,6 +390,8 @@ def build_comparison_analysis(
                 "params": base_params,
                 "metrics": {
                     "recall": float(base_result.recall),
+                    "ndcg_at_k": float(base_result.ndcg_at_k),
+                    "mrr_at_k": float(base_result.mrr_at_k),
                     "p95_query_ms": float(base_result.p95_query_ms),
                     "build_time_s": float(base_result.build_time_s),
                 },
@@ -462,6 +491,7 @@ def build_comparison_analysis(
             result = _compare_final_metrics(
                 optuna_metrics=optuna_by_seed[seed].metrics,
                 random_metrics=random_by_seed[seed].metrics,
+                target_recall=target_recall,
             )
             if result == "win":
                 wins += 1

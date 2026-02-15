@@ -9,21 +9,42 @@ def _recs() -> list[BackendRecommendation]:
         BackendRecommendation(
             backend="annoy",
             rationale="r1",
-            metrics={"recall": 0.96, "mean_query_ms": 0.08, "p95_query_ms": 0.10, "build_time_s": 0.5},
+            metrics={
+                "recall": 0.96,
+                "ndcg_at_k": 0.82,
+                "mrr_at_k": 0.77,
+                "mean_query_ms": 0.08,
+                "p95_query_ms": 0.10,
+                "build_time_s": 0.5,
+            },
             params={"n_trees": 100},
             top_trials=[],
         ),
         BackendRecommendation(
             backend="hnswlib",
             rationale="r2",
-            metrics={"recall": 0.98, "mean_query_ms": 0.12, "p95_query_ms": 0.20, "build_time_s": 0.4},
+            metrics={
+                "recall": 0.98,
+                "ndcg_at_k": 0.87,
+                "mrr_at_k": 0.81,
+                "mean_query_ms": 0.12,
+                "p95_query_ms": 0.20,
+                "build_time_s": 0.4,
+            },
             params={"M": 16},
             top_trials=[],
         ),
         BackendRecommendation(
             backend="faiss-ivf",
             rationale="r3",
-            metrics={"recall": 0.95, "mean_query_ms": 0.18, "p95_query_ms": 0.30, "build_time_s": 0.6},
+            metrics={
+                "recall": 0.95,
+                "ndcg_at_k": 0.79,
+                "mrr_at_k": 0.73,
+                "mean_query_ms": 0.18,
+                "p95_query_ms": 0.30,
+                "build_time_s": 0.6,
+            },
             params={"n_list": 64},
             top_trials=[],
         ),
@@ -57,10 +78,12 @@ def test_write_comparison_reports(tmp_path: Path):
     md = md_path.read_text(encoding="utf-8")
     html = html_path.read_text(encoding="utf-8")
     assert "## comparison table" in md
-    assert "| hnswlib | 0.9800 | 0.2000 |" in md
+    assert "| hnswlib | 0.9800 | 0.8700 | 0.8100 | 0.2000 |" in md
+    assert "## target recall qualified (ranked by p95)" in md
     assert "- annoy: recall=0.9600, p95=0.1000ms" in md
     assert "- hnswlib: recall=0.9800, p95=0.2000ms" in md
     assert "pareto scatter" in html
+    assert "ndcg_at_k" in html
     assert "faiss-ivf" in html
 
 

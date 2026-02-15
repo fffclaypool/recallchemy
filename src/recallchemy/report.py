@@ -19,6 +19,8 @@ def _recommendation_rows(recommendations: list[BackendRecommendation]) -> list[d
                 "p95_query_ms": float(metrics.get("p95_query_ms", float("inf"))),
                 "mean_query_ms": float(metrics.get("mean_query_ms", float("inf"))),
                 "build_time_s": float(metrics.get("build_time_s", float("inf"))),
+                "ndcg_at_k": float(metrics.get("ndcg_at_k", 0.0)),
+                "mrr_at_k": float(metrics.get("mrr_at_k", 0.0)),
                 "rationale": rec.rationale,
             }
         )
@@ -167,8 +169,8 @@ def _append_analysis_markdown(lines: list[str], comparison_analysis: dict[str, A
         [
             "## 3. Distribution (final best across seeds)",
             "",
-            "| backend | method | recall mean±std | recall 95% CI | p95_ms mean±std | p95_ms 95% CI | build_s mean±std |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            "| backend | method | recall mean±std | recall 95% CI | ndcg mean±std | ndcg 95% CI | mrr mean±std | mrr 95% CI | p95_ms mean±std | p95_ms 95% CI | build_s mean±std |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
     for backend in sorted(by_backend.keys()):
@@ -178,6 +180,8 @@ def _append_analysis_markdown(lines: list[str], comparison_analysis: dict[str, A
             if not item:
                 continue
             recall_stats = item.get("recall", {})
+            ndcg_stats = item.get("ndcg_at_k", {})
+            mrr_stats = item.get("mrr_at_k", {})
             p95_stats = item.get("p95_query_ms", {})
             build_stats = item.get("build_time_s", {})
             lines.append(
@@ -185,6 +189,10 @@ def _append_analysis_markdown(lines: list[str], comparison_analysis: dict[str, A
                 f"{backend} | {method} | "
                 f"{_fmt_mean_std(recall_stats, decimals=4)} | "
                 f"{_fmt_ci(recall_stats, decimals=4)} | "
+                f"{_fmt_mean_std(ndcg_stats, decimals=4)} | "
+                f"{_fmt_ci(ndcg_stats, decimals=4)} | "
+                f"{_fmt_mean_std(mrr_stats, decimals=4)} | "
+                f"{_fmt_ci(mrr_stats, decimals=4)} | "
                 f"{_fmt_mean_std(p95_stats, decimals=4)} | "
                 f"{_fmt_ci(p95_stats, decimals=4)} | "
                 f"{_fmt_mean_std(build_stats, decimals=4)} |"
@@ -233,17 +241,42 @@ def _build_markdown(
         "",
         "## comparison table",
         "",
-        "| backend | recall | p95_query_ms | mean_query_ms | build_time_s | pareto |",
-        "| --- | ---: | ---: | ---: | ---: | --- |",
+        "| backend | recall | ndcg_at_k | mrr_at_k | p95_query_ms | mean_query_ms | build_time_s | pareto |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     pareto_set = set(pareto_indices)
     for i, row in enumerate(rows):
         lines.append(
             "| "
-            f"{row['backend']} | {row['recall']:.4f} | {row['p95_query_ms']:.4f} | "
-            f"{row['mean_query_ms']:.4f} | {row['build_time_s']:.4f} | "
+            f"{row['backend']} | {row['recall']:.4f} | {row['ndcg_at_k']:.4f} | {row['mrr_at_k']:.4f} | "
+            f"{row['p95_query_ms']:.4f} | {row['mean_query_ms']:.4f} | {row['build_time_s']:.4f} | "
             f"{'yes' if i in pareto_set else 'no'} |"
         )
+
+    lines.extend(["", "## target recall qualified (ranked by p95)", ""])
+    target_recall = metadata.get("target_recall")
+    if _is_finite_number(target_recall):
+        qualified = [row for row in rows if row["recall"] >= float(target_recall)]
+        lines.extend(
+            [
+                "| rank | backend | recall | ndcg_at_k | mrr_at_k | p95_query_ms |",
+                "| ---: | --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        if qualified:
+            for rank, row in enumerate(
+                sorted(qualified, key=lambda r: (r["p95_query_ms"], r["build_time_s"], -r["recall"])),
+                start=1,
+            ):
+                lines.append(
+                    "| "
+                    f"{rank} | {row['backend']} | {row['recall']:.4f} | {row['ndcg_at_k']:.4f} | "
+                    f"{row['mrr_at_k']:.4f} | {row['p95_query_ms']:.4f} |"
+                )
+        else:
+            lines.append("| - | - | - | - | - | - |")
+    else:
+        lines.append("- target_recall is not set")
 
     lines.extend(["", "## pareto front (recall up, p95 down)", ""])
     if pareto_indices:
@@ -325,6 +358,8 @@ def _build_html(rows: list[dict[str, Any]], pareto_indices: list[int], metadata:
             "<tr>"
             f"<td>{escape(str(row['backend']))}</td>"
             f"<td>{row['recall']:.4f}</td>"
+            f"<td>{row['ndcg_at_k']:.4f}</td>"
+            f"<td>{row['mrr_at_k']:.4f}</td>"
             f"<td>{row['p95_query_ms']:.4f}</td>"
             f"<td>{row['mean_query_ms']:.4f}</td>"
             f"<td>{row['build_time_s']:.4f}</td>"
@@ -356,7 +391,7 @@ def _build_html(rows: list[dict[str, Any]], pareto_indices: list[int], metadata:
         "<div class='card'>"
         "<h2>comparison table</h2>"
         "<table><thead><tr>"
-        "<th>backend</th><th>recall</th><th>p95_query_ms</th><th>mean_query_ms</th><th>build_time_s</th><th>pareto</th>"
+        "<th>backend</th><th>recall</th><th>ndcg_at_k</th><th>mrr_at_k</th><th>p95_query_ms</th><th>mean_query_ms</th><th>build_time_s</th><th>pareto</th>"
         "</tr></thead><tbody>"
         + "".join(table_rows)
         + "</tbody></table></div></body></html>"
