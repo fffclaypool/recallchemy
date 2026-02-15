@@ -82,12 +82,49 @@ python -m recallchemy \
   --backends all
 ```
 
+## How to Read Results
+
+When `compare_seeds > 0`, the markdown report includes:
+- `1. Anytime`
+- `2. Impact summary`
+- `3. Distribution`
+- `4. Win-rate`
+
+### Impact summary (section 2)
+
+- `recall gain vs baseline`: recall improvement over fixed baseline params
+- `p95 reduction vs baseline`: latency reduction percentage vs baseline
+  - positive is faster
+  - negative means slower than baseline
+- `p95 reduction vs random`: latency reduction percentage vs random search (same budget)
+- `time-to-target`: average trial index where `target_recall` is first reached
+- `reach_rate`: fraction of seeds that reached `target_recall`
+
+Recommended interpretation:
+- first, verify both methods have high `reach_rate`
+- if both reach `target_recall`, compare `p95` and prefer lower latency
+- if one side does not reach target reliably, recall feasibility is the bottleneck
+
+### Win-rate (section 4)
+
+Win-rate compares Optuna and random search seed-by-seed under equal budget.
+
+- `win`: Optuna better on that seed
+- `loss`: random better
+- `tie`: equivalent
+- `win_rate = wins / n_pairs`
+
+Decision rule:
+- if both meet `target_recall`, lower `p95_query_ms` wins
+- if only one meets `target_recall`, that one wins
+- otherwise, higher recall wins (then lower p95 as tie-breaker)
+
 ## GitHub Actions + Git LFS dataset
 
 This repository includes a manual workflow:
 - `.github/workflows/tune-from-lfs-dataset.yml`
 
-It accepts `workflow_dispatch` input `dataset_path` and generates:
+It generates:
 - `recommendations.json`
 - `recommendations.comparison.md`
 - `recommendations.comparison.html`
@@ -111,12 +148,17 @@ git push
 ### 2. Run from Actions UI
 
 Open Actions -> `Tune From LFS Dataset` -> `Run workflow`, then set:
-- `dataset_path`: repository-relative path (example: `datasets/glove-100-angular.hdf5`)
-- optional tuning params (`backends`, `trials`, `top_k`, `target_recall`, etc.)
+- `scenario_name` (primary): choose the scenario (example: `ambiguous-hard`)
+- optional `dataset_path`: repository-relative dataset override
+  (empty means `dataset.path` from the selected scenario)
+- optional tuning overrides (`backends`, `trials`, `top_k`, `target_recall`, etc.)
 - optional `trial_budgets`: space-separated budgets (example: `10 30 80`) to run budget sweep in one job
 
-The workflow validates that the given file is LFS-tracked, pulls the LFS object,
-runs `recallchemy`, and uploads report artifacts (`artifacts/**`, including per-budget outputs).
+The workflow resolves the selected scenario, validates that the resolved dataset is LFS-tracked,
+pulls the LFS object, runs `recallchemy`, and uploads report artifacts (`artifacts/**`,
+including per-budget outputs).
+
+If `trials` is empty, scenario default `optimization.trials` is used.
 
 Scenario-driven run:
 
