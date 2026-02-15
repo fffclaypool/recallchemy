@@ -1,0 +1,43 @@
+version: 1
+name: ambiguous-hard-angular
+
+dataset:
+  path: datasets/ambiguous-hard-angular.npz
+  metric: angular
+  max_train: 100000
+  max_queries: 800
+  seed: 42
+
+evaluation:
+  top_k: 5
+  target_recall: 0.99
+  gt_batch_size: 64
+
+optimization:
+  trials: 40
+  timeout: 3600
+  local_refine: true
+  stage1_ratio: 0.6
+  seed: 42
+
+analysis:
+  compare_seeds: 3
+  seed_start: 100
+
+backends:
+  include: [hnswlib, annoy, faiss-ivf]
+
+constraints:
+  min_recall: 0.97
+  max_p95_ms: 20
+  max_build_time_s: 900
+
+output:
+  path: /tmp/recallchemy_data/ambiguous-hard-result.json
+  save_top_trials: 10
+
+wandb:
+  enabled: false
+  project: recallchemy
+  run_name: ambiguous-hard-angular
+  tags: [hard-dataset, angular, benchmark]

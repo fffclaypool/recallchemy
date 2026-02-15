@@ -86,5 +86,39 @@ def test_build_comparison_analysis_shapes():
     assert analysis["seeds"] == [42, 43]
     assert "annoy" in analysis["by_backend"]
     assert "anytime" in analysis["by_backend"]["annoy"]
+    assert "impact" in analysis["by_backend"]["annoy"]
     assert "distribution" in analysis["by_backend"]["annoy"]
     assert "win_rate" in analysis["by_backend"]["annoy"]
+
+    impact = analysis["by_backend"]["annoy"]["impact"]
+    assert "p95_reduction_vs_baseline_pct" in impact
+    assert "time_to_target" in impact
+    assert "optuna" in impact["time_to_target"]
+    assert "random" in impact["time_to_target"]
+
+
+def test_build_comparison_analysis_impact_metrics_have_expected_direction():
+    backend = DummyBackend()
+    dataset = _dataset()
+    analysis = build_comparison_analysis(
+        backends=[backend],
+        dataset=dataset,
+        top_k=1,
+        n_trials=6,
+        target_recall=0.8,
+        timeout=None,
+        top_n_trials=3,
+        local_refine=False,
+        stage1_ratio=0.6,
+        constraints=None,
+        seed_start=50,
+        seed_count=2,
+        runtime_seed=50,
+        main_optuna_recommendations=None,
+    )
+    impact = analysis["by_backend"]["annoy"]["impact"]
+    assert impact["baseline_p95_query_ms"] > 0.0
+    assert impact["optuna_p95_query_ms_mean"] > 0.0
+    assert impact["p95_speedup_vs_baseline_x"] > 0.0
+    assert -100.0 <= impact["p95_reduction_vs_baseline_pct"] <= 100.0
+    assert impact["time_to_target"]["optuna"]["stats"]["n"] >= 1

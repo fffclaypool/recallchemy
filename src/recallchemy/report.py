@@ -77,6 +77,18 @@ def _fmt_ci(stats: dict[str, Any], decimals: int = 4) -> str:
     return f"[{_fmt_number(stats.get('ci_low'), decimals=decimals)}, {_fmt_number(stats.get('ci_high'), decimals=decimals)}]"
 
 
+def _fmt_pct(value: Any, decimals: int = 1) -> str:
+    if not _is_finite_number(value):
+        return "-"
+    return f"{float(value):.{decimals}f}%"
+
+
+def _fmt_multiplier(value: Any, decimals: int = 2) -> str:
+    if not _is_finite_number(value):
+        return "-"
+    return f"{float(value):.{decimals}f}x"
+
+
 def _append_analysis_markdown(lines: list[str], comparison_analysis: dict[str, Any]) -> None:
     by_backend = comparison_analysis.get("by_backend", {})
     if not by_backend:
@@ -122,6 +134,34 @@ def _append_analysis_markdown(lines: list[str], comparison_analysis: dict[str, A
                     f"{_fmt_mean_std(random.get('p95_query_ms', {}), decimals=4)} |"
                 )
         lines.append("")
+
+    lines.extend(
+        [
+            "## 2. Impact summary (baseline vs optimization)",
+            "",
+            "| backend | recall gain vs baseline | p95 reduction vs baseline | p95 speedup vs baseline | p95 reduction vs random | p95 speedup vs random | optuna time-to-target (mean trial) | random time-to-target (mean trial) | optuna reach_rate | random reach_rate |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for backend in sorted(by_backend.keys()):
+        impact = by_backend[backend].get("impact", {})
+        ttt = impact.get("time_to_target", {})
+        opt_ttt = ttt.get("optuna", {})
+        rnd_ttt = ttt.get("random", {})
+        lines.append(
+            "| "
+            f"{backend} | "
+            f"{_fmt_number(impact.get('recall_gain_vs_baseline'), decimals=4)} | "
+            f"{_fmt_pct(impact.get('p95_reduction_vs_baseline_pct'), decimals=1)} | "
+            f"{_fmt_multiplier(impact.get('p95_speedup_vs_baseline_x'), decimals=2)} | "
+            f"{_fmt_pct(impact.get('p95_reduction_vs_random_pct'), decimals=1)} | "
+            f"{_fmt_multiplier(impact.get('p95_speedup_vs_random_x'), decimals=2)} | "
+            f"{_fmt_number(opt_ttt.get('stats', {}).get('mean'), decimals=2)} | "
+            f"{_fmt_number(rnd_ttt.get('stats', {}).get('mean'), decimals=2)} | "
+            f"{_fmt_pct(float(opt_ttt.get('reach_rate', float('nan'))) * 100.0, decimals=1)} | "
+            f"{_fmt_pct(float(rnd_ttt.get('reach_rate', float('nan'))) * 100.0, decimals=1)} |"
+        )
+    lines.append("")
 
     lines.extend(
         [

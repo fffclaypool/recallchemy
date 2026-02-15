@@ -22,6 +22,11 @@ on:
         required: false
         default: "20"
         type: string
+      trial_budgets:
+        description: "Optional space-separated trial budgets for sweep, e.g. 10 30 80"
+        required: false
+        default: ""
+        type: string
       top_k:
         description: "top-k for evaluation"
         required: false
@@ -55,6 +60,7 @@ jobs:
       INPUT_METRIC: ${{ github.event.inputs.metric }}
       INPUT_BACKENDS: ${{ github.event.inputs.backends }}
       INPUT_TRIALS: ${{ github.event.inputs.trials }}
+      INPUT_TRIAL_BUDGETS: ${{ github.event.inputs.trial_budgets }}
       INPUT_TOP_K: ${{ github.event.inputs.top_k }}
       INPUT_TARGET_RECALL: ${{ github.event.inputs.target_recall }}
       INPUT_MAX_QUERIES: ${{ github.event.inputs.max_queries }}
@@ -129,16 +135,72 @@ jobs:
             metric_args=(--metric "${INPUT_METRIC}")
           fi
 
-          python -m recallchemy \
-            --dataset "${DATASET_PATH}" \
-            "${metric_args[@]}" \
-            --backends "${backends_array[@]}" \
-            --trials "${INPUT_TRIALS}" \
-            --top-k "${INPUT_TOP_K}" \
-            --target-recall "${INPUT_TARGET_RECALL}" \
-            --max-queries "${INPUT_MAX_QUERIES}" \
-            --compare-seeds "${INPUT_COMPARE_SEEDS}" \
-            --output "${OUTPUT_JSON}"
+          echo -e "trials\tbest_backend\tbest_recall\tbest_p95_ms" > "${OUTPUT_DIR}/budget_summary.tsv"
+
+          run_one_budget() {
+            local trial_budget="$1"
+            local budget_dir="${OUTPUT_DIR}/budget_${trial_budget}"
+            local output_json="${budget_dir}/recommendations.json"
+
+            mkdir -p "${budget_dir}"
+            python -m recallchemy \
+              --dataset "${DATASET_PATH}" \
+              "${metric_args[@]}" \
+              --backends "${backends_array[@]}" \
+              --trials "${trial_budget}" \
+              --top-k "${INPUT_TOP_K}" \
+              --target-recall "${INPUT_TARGET_RECALL}" \
+              --max-queries "${INPUT_MAX_QUERIES}" \
+              --compare-seeds "${INPUT_COMPARE_SEEDS}" \
+              --output "${output_json}"
+
+            python - "${output_json}" "${trial_budget}" >> "${OUTPUT_DIR}/budget_summary.tsv" <<'PY'
+import json
+import math
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+trials = sys.argv[2]
+payload = json.loads(path.read_text(encoding="utf-8"))
+rows = payload.get("recommendations", [])
+if not rows:
+    print(f"{trials}\t-\t-\t-")
+    raise SystemExit(0)
+
+def key_fn(rec):
+    m = rec.get("metrics", {})
+    return (-float(m.get("recall", -math.inf)), float(m.get("p95_query_ms", math.inf)))
+
+best = sorted(rows, key=key_fn)[0]
+metrics = best.get("metrics", {})
+print(
+    f"{trials}\t{best.get('backend', '-')}\t"
+    f"{float(metrics.get('recall', float('nan'))):.4f}\t"
+    f"{float(metrics.get('p95_query_ms', float('nan'))):.4f}"
+)
+PY
+          }
+
+          budget_values=()
+          if [[ -n "${INPUT_TRIAL_BUDGETS// }" ]]; then
+            read -r -a budget_values <<< "${INPUT_TRIAL_BUDGETS}"
+          else
+            budget_values=("${INPUT_TRIALS}")
+          fi
+
+          for budget in "${budget_values[@]}"; do
+            if ! [[ "${budget}" =~ ^[0-9]+$ ]] || [[ "${budget}" -le 0 ]]; then
+              echo "invalid trial budget: ${budget}" >&2
+              exit 1
+            fi
+            run_one_budget "${budget}"
+          done
+
+          first_budget="${budget_values[0]}"
+          cp "${OUTPUT_DIR}/budget_${first_budget}/recommendations.json" "${OUTPUT_JSON}"
+          cp "${OUTPUT_DIR}/budget_${first_budget}/recommendations.comparison.md" "${OUTPUT_DIR}/recommendations.comparison.md"
+          cp "${OUTPUT_DIR}/budget_${first_budget}/recommendations.comparison.html" "${OUTPUT_DIR}/recommendations.comparison.html"
 
       - name: Summarize outputs
         shell: bash
@@ -148,16 +210,21 @@ jobs:
             echo "## recallchemy report"
             echo ""
             echo "- dataset_path: \`${DATASET_PATH}\`"
-            echo "- output_json: \`${OUTPUT_JSON}\`"
-            echo "- output_markdown: \`${OUTPUT_JSON%.json}.comparison.md\`"
-            echo "- output_html: \`${OUTPUT_JSON%.json}.comparison.html\`"
+            echo "- primary_output_json: \`${OUTPUT_JSON}\`"
+            echo "- primary_output_markdown: \`${OUTPUT_JSON%.json}.comparison.md\`"
+            echo "- primary_output_html: \`${OUTPUT_JSON%.json}.comparison.html\`"
+            echo ""
+            echo "### trial budget summary"
+            echo ""
+            echo "| trials | best backend | best recall | best p95 ms |"
+            echo "| ---: | --- | ---: | ---: |"
+            tail -n +2 "${OUTPUT_DIR}/budget_summary.tsv" | while IFS=$'\t' read -r budget backend recall p95; do
+              echo "| ${budget} | ${backend} | ${recall} | ${p95} |"
+            done
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: recallchemy-report-${{ github.run_id }}
-          path: |
-            artifacts/recommendations.json
-            artifacts/recommendations.comparison.md
-            artifacts/recommendations.comparison.html
+          path: artifacts/**
