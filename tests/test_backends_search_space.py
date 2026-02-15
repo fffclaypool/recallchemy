@@ -195,3 +195,65 @@ def test_annoy_profiles_do_not_conflict_in_optuna():
 
 def test_faiss_profiles_do_not_conflict_in_optuna():
     _assert_profiles_share_study(FaissIVFBackend(), n_train=200000, dim=96, top_k=10)
+
+
+def test_hnsw_annbench_stays_compatible_with_optuna_categorical_space():
+    backend = HnswlibBackend()
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    study.enqueue_trial(
+        {
+            "space_profile": "annbench",
+            "M_prior": 8,
+            "ef_construction_prior": 100,
+            "ef_search_prior": 40,
+        }
+    )
+    study.enqueue_trial(
+        {
+            "space_profile": "annbench",
+            "M_prior": 64,
+            "ef_construction_prior": 100,
+            "ef_search_prior": 200,
+        }
+    )
+
+    def objective(trial: optuna.Trial) -> float:
+        params = backend.suggest_params(trial=trial, n_train=100000, dim=96, top_k=10)
+        trial.set_user_attr("params", params)
+        return 0.0
+
+    study.optimize(objective, n_trials=2)
+    assert len(study.trials) == 2
+    for trial in study.trials:
+        params = trial.user_attrs["params"]
+        assert params["ef_construction"] >= 2 * params["M"]
+
+
+def test_faiss_annbench_stays_compatible_with_optuna_categorical_space():
+    backend = FaissIVFBackend()
+    study = optuna.create_study(sampler=optuna.samplers.RandomSampler(seed=0))
+    study.enqueue_trial(
+        {
+            "space_profile": "annbench",
+            "n_list_prior": 32,
+            "n_probe_prior": 200,
+        }
+    )
+    study.enqueue_trial(
+        {
+            "space_profile": "annbench",
+            "n_list_prior": 512,
+            "n_probe_prior": 1,
+        }
+    )
+
+    def objective(trial: optuna.Trial) -> float:
+        params = backend.suggest_params(trial=trial, n_train=100000, dim=96, top_k=10)
+        trial.set_user_attr("params", params)
+        return 0.0
+
+    study.optimize(objective, n_trials=2)
+    assert len(study.trials) == 2
+    for trial in study.trials:
+        params = trial.user_attrs["params"]
+        assert params["n_probe"] <= params["n_list"]

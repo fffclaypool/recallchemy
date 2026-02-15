@@ -244,6 +244,10 @@ class HnswlibBackend(VectorBackend):
         if not m_candidates:
             m_candidates = [m_low, min(max_m, 16)]
 
+        ef_construction_candidates = [ef for ef in efc_prior_choices if ef >= efc_range[0]]
+        if not ef_construction_candidates:
+            ef_construction_candidates = [max(efc_range[0], 2 * m_low)]
+
         ef_search_candidates = [ef for ef in efs_prior_choices if ef >= top_k and ef <= max(top_k, n_train)]
         if not ef_search_candidates:
             ef_search_candidates = [max(top_k, efs_range[0])]
@@ -251,15 +255,14 @@ class HnswlibBackend(VectorBackend):
         profile = trial.suggest_categorical("space_profile", ["annbench", "extended"])
         if profile == "annbench":
             m = trial.suggest_categorical("M_prior", sorted(set(m_candidates)))
-            ef_construction_candidates = [v for v in efc_prior_choices if v >= (2 * int(m))]
-            if not ef_construction_candidates:
-                ef_construction_candidates = [max(2 * int(m), efc_range[0])]
+            ef_construction_prior = int(
+                trial.suggest_categorical("ef_construction_prior", sorted(set(ef_construction_candidates)))
+            )
             return {
                 "space_profile": profile,
                 "M": int(m),
-                "ef_construction": int(
-                    trial.suggest_categorical("ef_construction_prior", ef_construction_candidates)
-                ),
+                # Keep categorical choices static across trials for Optuna compatibility.
+                "ef_construction": max(int(ef_construction_prior), max(efc_range[0], 2 * int(m))),
                 "ef_search": int(trial.suggest_categorical("ef_search_prior", sorted(set(ef_search_candidates)))),
             }
 
@@ -481,14 +484,16 @@ class FaissIVFBackend(VectorBackend):
             if not nlist_candidates:
                 nlist_candidates = [max(1, min(32, n_train // 5))]
             n_list = int(trial.suggest_categorical("n_list_prior", sorted(set(nlist_candidates))))
-            nprobe_candidates = [p for p in nprobe_prior_choices if 1 <= p <= n_list]
+            nprobe_candidates = [p for p in nprobe_prior_choices if p >= 1]
             if not nprobe_candidates:
                 nprobe_candidates = [1]
+            n_probe_prior = int(trial.suggest_categorical("n_probe_prior", sorted(set(nprobe_candidates))))
             return {
                 "space_profile": profile,
                 "index_type": "ivf_flat",
                 "n_list": n_list,
-                "n_probe": int(trial.suggest_categorical("n_probe_prior", sorted(set(nprobe_candidates)))),
+                # Keep categorical choices static across trials for Optuna compatibility.
+                "n_probe": min(int(n_list), max(1, int(n_probe_prior))),
                 "rerank_k_factor": 1,
             }
 
