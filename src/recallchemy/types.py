@@ -23,4 +23,5 @@ class EvaluationResult:
     mean_query_ms: float
     p95_query_ms: float
     build_time_s: float
-
+    ndcg_at_k: float = 0.0
+    mrr_at_k: float = 0.0

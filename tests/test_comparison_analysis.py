@@ -2,7 +2,7 @@ import numpy as np
 import optuna
 
 from recallchemy.backends import VectorBackend
-from recallchemy.comparison_analysis import baseline_params_for_backend, build_comparison_analysis
+from recallchemy.comparison_analysis import _compare_final_metrics, baseline_params_for_backend, build_comparison_analysis
 from recallchemy.optimizer import optimize_backend
 from recallchemy.types import DatasetBundle, EvaluationResult
 
@@ -122,3 +122,12 @@ def test_build_comparison_analysis_impact_metrics_have_expected_direction():
     assert impact["p95_speedup_vs_baseline_x"] > 0.0
     assert -100.0 <= impact["p95_reduction_vs_baseline_pct"] <= 100.0
     assert impact["time_to_target"]["optuna"]["stats"]["n"] >= 1
+
+
+def test_compare_final_metrics_uses_latency_when_both_meet_target():
+    result = _compare_final_metrics(
+        optuna_metrics={"recall": 0.991, "p95_query_ms": 0.7},
+        random_metrics={"recall": 0.995, "p95_query_ms": 1.0},
+        target_recall=0.99,
+    )
+    assert result == "win"

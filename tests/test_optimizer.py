@@ -1,4 +1,4 @@
-from recallchemy.optimizer import _compute_param_importance, select_recommendation
+from recallchemy.optimizer import _compute_param_importance, _split_trials, _tpe_startup_trials, select_recommendation
 
 
 def test_select_recommendation_prefers_low_latency_when_target_met():
@@ -49,3 +49,21 @@ def test_compute_param_importance_uses_row_params():
     got = _compute_param_importance(rows, metric_key="recall")
     assert "n_trees" in got
     assert "search_k" in got
+
+
+def test_split_trials_biases_stage1_for_small_budget():
+    stage1, stage2 = _split_trials(n_trials=8, local_refine=True, stage1_ratio=0.6)
+    assert stage1 == 6
+    assert stage2 == 2
+
+
+def test_split_trials_disables_two_stage_when_too_few_trials():
+    stage1, stage2 = _split_trials(n_trials=5, local_refine=True, stage1_ratio=0.6)
+    assert stage1 == 5
+    assert stage2 == 0
+
+
+def test_tpe_startup_trials_scales_with_budget():
+    assert _tpe_startup_trials(2) == 1
+    assert _tpe_startup_trials(8) == 2
+    assert _tpe_startup_trials(40) == 10

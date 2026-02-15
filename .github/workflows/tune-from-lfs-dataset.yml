@@ -216,11 +216,66 @@ PY
             echo ""
             echo "### trial budget summary"
             echo ""
-            echo "| trials | best backend | best recall | best p95 ms |"
-            echo "| ---: | --- | ---: | ---: |"
-            tail -n +2 "${OUTPUT_DIR}/budget_summary.tsv" | while IFS=$'\t' read -r budget backend recall p95; do
-              echo "| ${budget} | ${backend} | ${recall} | ${p95} |"
-            done
+            echo "| trials | best backend | best recall | best p95 ms | recall delta vs first | p95 reduction vs first |"
+            echo "| ---: | --- | ---: | ---: | ---: | ---: |"
+            python - "${OUTPUT_DIR}/budget_summary.tsv" <<'PY'
+from __future__ import annotations
+
+import math
+import sys
+from pathlib import Path
+
+
+def parse_float(text: str) -> float:
+    try:
+        value = float(text)
+    except Exception:
+        return float("nan")
+    return value if math.isfinite(value) else float("nan")
+
+
+def fmt_delta(value: float) -> str:
+    if not math.isfinite(value):
+        return "-"
+    return f"{value:+.4f}"
+
+
+def fmt_pct(value: float) -> str:
+    if not math.isfinite(value):
+        return "-"
+    return f"{value:.1f}%"
+
+
+rows: list[tuple[str, str, str, str]] = []
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()[1:]:
+    if not line.strip():
+        continue
+    parts = line.split("\t")
+    if len(parts) < 4:
+        continue
+    rows.append((parts[0], parts[1], parts[2], parts[3]))
+
+if not rows:
+    raise SystemExit(0)
+
+base_recall = parse_float(rows[0][2])
+base_p95 = parse_float(rows[0][3])
+for budget, backend, recall_text, p95_text in rows:
+    recall = parse_float(recall_text)
+    p95 = parse_float(p95_text)
+    recall_delta = (
+        recall - base_recall if math.isfinite(recall) and math.isfinite(base_recall) else float("nan")
+    )
+    p95_reduction = (
+        ((base_p95 - p95) / base_p95) * 100.0
+        if math.isfinite(base_p95) and base_p95 > 0.0 and math.isfinite(p95)
+        else float("nan")
+    )
+    print(
+        f"| {budget} | {backend} | {recall_text} | {p95_text} | "
+        f"{fmt_delta(recall_delta)} | {fmt_pct(p95_reduction)} |"
+    )
+PY
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload artifacts

@@ -1,6 +1,6 @@
 import numpy as np
 
-from recallchemy.metrics import compute_ground_truth, recall_at_k
+from recallchemy.metrics import compute_ground_truth, mrr_at_k, ndcg_at_k, recall_at_k
 
 
 def test_compute_ground_truth_euclidean_shape():
@@ -19,3 +19,16 @@ def test_recall_at_k():
     recall = recall_at_k(predictions, ground_truth, k=3)
     assert abs(recall - 0.5) < 1e-9
 
+
+def test_ndcg_at_k():
+    predictions = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
+    ground_truth = np.array([[1, 9, 8], [7, 5, 6]], dtype=np.int64)
+    ndcg = ndcg_at_k(predictions, ground_truth, k=3)
+    assert abs(ndcg - 0.5) < 1e-9
+
+
+def test_mrr_at_k():
+    predictions = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int64)
+    ground_truth = np.array([[1, 9, 8], [7, 5, 6]], dtype=np.int64)
+    mrr = mrr_at_k(predictions, ground_truth, k=3)
+    assert abs(mrr - 0.75) < 1e-9

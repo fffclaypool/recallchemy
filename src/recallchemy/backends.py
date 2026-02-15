@@ -9,7 +9,7 @@ import numpy as np
 import optuna
 from numpy.typing import NDArray
 
-from .metrics import canonical_metric, recall_at_k
+from .metrics import canonical_metric, mrr_at_k, ndcg_at_k, recall_at_k
 from .priors import (
     ANNOY_N_TREES,
     ANNOY_N_TREES_RANGE,
@@ -198,6 +198,8 @@ class VectorBackend(ABC):
             mean_query_ms=float(np.mean(latencies)),
             p95_query_ms=float(np.percentile(latencies, 95)),
             build_time_s=float(build_time),
+            ndcg_at_k=ndcg_at_k(predictions, ground_truth, top_k),
+            mrr_at_k=mrr_at_k(predictions, ground_truth, top_k),
         )
 
     def _override_range(self, key: str, default: tuple[int, int]) -> tuple[int, int]:
