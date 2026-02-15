@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recallchemy"
+version = "0.1.0"
+description = "Optuna-based ANN parameter tuner for vector search backends"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26,<3",
+  "optuna>=3.6,<5",
+  "h5py>=3.10,<4",
+  "PyYAML>=6.0,<7",
+  "wandb>=0.25.0",
+]
+
+[project.optional-dependencies]
+backends = [
+  "hnswlib>=0.8.0",
+  "annoy>=1.17.3",
+  "faiss-cpu>=1.8.0.post1",
+]
+wandb = ["wandb>=0.17,<1"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+recallchemy-tune = "recallchemy.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
